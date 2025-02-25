@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getTransaction } from '../utils/api';
+import { fetchAccountTransactions } from '../utils/api';
 
 type Transaction = {
   id: string;
@@ -13,7 +13,7 @@ export default function TransactionList({ accountId }: { accountId: string }) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
 
   useEffect(() => {
-    getTransaction(accountId).then(setTransactions);
+    fetchAccountTransactions(accountId).then(setTransactions);
   }, [accountId]);
 
   return (

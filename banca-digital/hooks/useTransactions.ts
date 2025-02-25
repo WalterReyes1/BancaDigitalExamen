@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getTransaction, createTransaction } from '../utils/api';
+import { fetchAccountTransactions, createTransaction } from '../utils/api';
 
 export default function useTransactions(accountId: string) {
   const [transactions, setTransactions] = useState<any[]>([]);
@@ -8,7 +8,7 @@ export default function useTransactions(accountId: string) {
   useEffect(() => {
     const fetchTransactions = async () => {
       setLoading(true);
-      const data = await getTransaction(accountId);
+      const data = await fetchAccountTransactions(accountId);
       setTransactions(data);
       setLoading(false);
     };
