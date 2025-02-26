@@ -37,14 +37,6 @@ const TransferForm: React.FC<TransferFormProps> = ({ onTransfer }): JSX.Element 
     setSuccess('');
   
     // Validar que todos los campos estén completos
-    if (!fromAccountId.trim()) {
-      setError('Selecciona una cuenta de origen');
-      return;
-    }
-    if (!toAccountId.trim()) {
-      setError('Selecciona una cuenta destino');
-      return;
-    }
     if (amount <= 0) {
       setError('El monto debe ser mayor a 0');
       return;
@@ -58,8 +50,6 @@ const TransferForm: React.FC<TransferFormProps> = ({ onTransfer }): JSX.Element 
     const selectedFromAccount = accounts.find(account => account.id === fromAccountId);
     const selectedToAccount = accounts.find(account => account.id === toAccountId);
 
-  
-    
     try {
       // Realizar la transferencia
       const result = await transferFunds(fromAccountId, toAccountId, amount, description, "NIO");
@@ -95,7 +85,6 @@ const TransferForm: React.FC<TransferFormProps> = ({ onTransfer }): JSX.Element 
       setError('Error al realizar la transferencia. Verifica la información e intenta nuevamente.');
     }
   };
-  
 
   return (
     <div className="mb-8 p-6 border rounded-lg bg-white shadow-lg">
@@ -139,10 +128,16 @@ const TransferForm: React.FC<TransferFormProps> = ({ onTransfer }): JSX.Element 
       <div className="mt-4">
         <label className="block text-sm font-medium text-gray-700">Monto</label>
         <input
-          type="number"
+          type="text" // Cambié de "number" a "text"
           className="w-full p-2 border border-green-300 rounded mt-1 focus:outline-none focus:ring-2 focus:ring-green-500 text-black"
           value={amount}
-          onChange={(e) => setAmount(Number(e.target.value))}
+          onChange={(e) => {
+            // Validación para permitir solo números
+            const value = e.target.value;
+            if (/^\d*\.?\d*$/.test(value)) {
+              setAmount(value ? Number(value) : 0);
+            }
+          }}
         />
       </div>
 
