@@ -1,14 +1,23 @@
 import { useState, useEffect } from 'react';
-import { fetchUser, fetchAccount, fetchAccountTransactions } from '../utils/api';
+import { fetchUser, fetchAccount, fetchAccountTransaction } from '../utils/api'; // Asegúrate de importar la función de la transacción API
+import TransferForm from '../components/TransferForm';
 
-type Account = {
-    alias: string;
-    account_number: number;
+interface User {
+    full_name: string;
+    profile_photo: string;
+    products?: any[];
+}
+
+interface Account {
+    id: string;
+    account_number: string;
     balance: number;
     currency: string;
-};
+    name: string;
+    alias: string;
+}
 
-type Transaction = {
+interface Transaction {
     transaction_number: string;
     description: string;
     transaction_type: string;
@@ -17,73 +26,57 @@ type Transaction = {
         value: number;
     };
     transaction_date: string;
+}
+
+const transformTransactions = (apiResponse: any) => {
+    // Verificamos si apiResponse tiene la propiedad 'items' y si es un array
+    const newTransactions = apiResponse.items && Array.isArray(apiResponse.items) 
+        ? apiResponse.items 
+        : [apiResponse]; // Si no, retornamos apiResponse tal cual, envuelto en un array
+
+    return newTransactions;
 };
 
-const AccountCard = ({ account }: { account: Account }) => {
-    return (
-        <div className="p-4 border border-green-300 rounded-lg mt-4 bg-white shadow-lg w-full max-w-xs transform transition-all hover:scale-105 hover:shadow-2xl">
-            <h3 className="font-semibold text-xl text-green-700">Cuenta ID: {account.account_number}</h3>
-            <p className="text-gray-600">Tipo de cuenta: {account.alias}</p>
-            <p className="text-lg font-bold text-green-600 mt-2">Saldo: {account.balance} {account.currency}</p>
-        </div>
-    );
-};
 
-const TransactionCard = ({ transaction }: { transaction: Transaction }) => {
-    return (
-        <div className="p-4 border border-green-300 rounded-lg mt-4 bg-white shadow-lg w-full max-w-xs transform transition-all hover:scale-105 hover:shadow-2xl">
-            <h3 className="font-semibold text-lg text-green-700">{transaction.transaction_type} - {transaction.description}</h3>
-            <p className="text-gray-600">
-                {transaction.amount.value} {transaction.amount.currency}
-            </p>
-            <p className="text-sm text-gray-500">{transaction.transaction_date}</p>
-        </div>
-    );
-};
+const LOCAL_STORAGE_KEY = 'transactions';
+const ACCOUNTS_STORAGE_KEY = 'accounts';
 
 const Dashboard = () => {
-    const [user, setUser] = useState<any>(null);
+    const [user, setUser] = useState<User | null>(null);
     const [accounts, setAccounts] = useState<Account[]>([]);
     const [transactions, setTransactions] = useState<Transaction[]>([]);
-    const [loading, setLoading] = useState<boolean>(true);
-    const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
+    const [filteredTransactions, setFilteredTransactions] = useState<Transaction[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [fromAccount, setFromAccount] = useState<Account | null>(null);
+    const [startDate, setStartDate] = useState<string>('');
+    const [endDate, setEndDate] = useState<string>('');
 
-    const userId = '1'; // Reemplaza con el ID real del usuario
+    const userId = '1';
 
     useEffect(() => {
         const fetchData = async () => {
             try {
-                setLoading(true);
-
-                // Obtener la información del usuario
                 const userData = await fetchUser(userId);
                 setUser(userData);
 
-                // Obtener las IDs de las cuentas del usuario
+                let accountDetails;
                 const accountsData = userData.products || [];
-                const accountIds = accountsData.map((account: any) => account.id);
-
-                // Realizar una llamada a la API para obtener la información de cada cuenta usando las IDs
-                const accountDetails = await Promise.all(
-                    accountIds.map(async (accountId: string) => {
-                        const response = await fetchAccount(accountId); // Llama a tu API con el ID de la cuenta
-                        return response;
-                    })
-                );
-
-                // Actualizar el estado con la información completa de las cuentas
+                accountDetails = await Promise.all(accountsData.map((account: any) => fetchAccount(account.id)));
+                localStorage.setItem(ACCOUNTS_STORAGE_KEY, JSON.stringify(accountDetails));
                 setAccounts(accountDetails);
 
-                // Obtener las transacciones para cada cuenta
-                const allTransactions = await Promise.all(
-                    accountDetails.map(async (account: any) => {
-                        const response = await fetchAccountTransactions(account.id);
-                        return response.items || [];
-                    })
-                );
+                const storedTransactions = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY) || '[]');
 
-                setTransactions(allTransactions.flat());
-
+                // Traemos la transacción de la API (ahora con accountId y transactionId)
+                const apiTransaction = await fetchAccountTransaction();
+                console.log('Transacción de la API:', apiTransaction);
+                // Combinamos las transacciones de la API con las almacenadas localmente
+                const transformedTransactions = transformTransactions(apiTransaction); 
+                const allTransactions = [...storedTransactions, ...transformedTransactions];
+                setTransactions(allTransactions);
+                setFilteredTransactions(allTransactions); // Inicializamos con todas las transacciones
+                console.log('Transacciones:', allTransactions);
             } catch (error) {
                 console.error('Error al cargar los datos del dashboard', error);
             } finally {
@@ -93,8 +86,60 @@ const Dashboard = () => {
         fetchData();
     }, [userId]);
 
-    const openModal = () => setIsModalOpen(true);
+    const openModal = (account: Account | null) => {
+        setFromAccount(account);
+        setIsModalOpen(true);
+    };
+
     const closeModal = () => setIsModalOpen(false);
+
+    const handleTransfer = (amount: number, fromAccountId: string, toAccountId: string, description: string) => {
+        // Agregamos la nueva transacción
+        const newTransaction = {
+            transaction_number: Math.random().toString(36).substr(2, 9),
+            description: `Transferencia de ${fromAccountId} a ${toAccountId}`,
+            transaction_type: 'Transfer',
+            amount: { currency: 'NIO', value: amount },
+            transaction_date: new Date().toISOString(),
+        };
+
+        const updatedTransactions = [...transactions, newTransaction];
+        setTransactions(updatedTransactions);
+        setFilteredTransactions(updatedTransactions);
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updatedTransactions));
+
+        // Actualizamos las cuentas
+        const updatedAccounts = accounts.map(account => {
+            if (account.account_number === fromAccountId) {
+                return { ...account, balance: account.balance - amount };
+            } else if (account.account_number === toAccountId) {
+                return { ...account, balance: account.balance + amount };
+            }
+            return account;
+        });
+
+        setAccounts(updatedAccounts);
+        localStorage.setItem(ACCOUNTS_STORAGE_KEY, JSON.stringify(updatedAccounts));
+        closeModal();
+    };
+
+    // Filtrar transacciones por fechas
+    const filterTransactionsByDate = () => {
+        if (startDate && endDate) {
+            const filtered = transactions.filter(transaction => {
+                const transactionDate = new Date(transaction.transaction_date);
+                return transactionDate >= new Date(startDate) && transactionDate <= new Date(endDate);
+            });
+            setFilteredTransactions(filtered);
+        } else {
+            setFilteredTransactions(transactions); // Si no hay fechas, mostramos todas las transacciones
+        }
+    };
+
+    // Ejecutar el filtrado cada vez que cambian las fechas
+    useEffect(() => {
+        filterTransactionsByDate();
+    }, [startDate, endDate, transactions]);
 
     if (loading) {
         return <div className="text-center text-green-600">Cargando...</div>;
@@ -105,58 +150,84 @@ const Dashboard = () => {
             {user && (
                 <div className="bg-white p-6 rounded-lg shadow-xl max-w-4xl mx-auto">
                     <h1 className="text-3xl font-semibold text-green-800 text-center">{user.full_name}</h1>
-                    <img
-                        src={user.profile_photo}
-                        alt="Profile"
-                        className="w-32 h-32 rounded-full mt-6 mx-auto"
-                    />
-                    <h2 className="text-xl mt-6 text-green-700 text-center">Mis Cuentas</h2>
-                    {accounts.length > 0 ? (
-                        <div className="flex justify-center items-center flex-wrap gap-6 mt-4">
-                            {accounts.map((account) => (
-                                <AccountCard key={account.account_number} account={account} />
-                            ))}
-                        </div>
-                    ) : (
-                        <p className="text-gray-600 text-center">No hay cuentas disponibles.</p>
-                    )}
+                    <img src={user.profile_photo} alt="Profile" className="w-32 h-32 rounded-full mt-6 mx-auto" />
 
-                    <h2 className="text-xl mt-8 text-green-700 text-center">Transacciones Recientes</h2>
-                    {transactions.length > 0 ? (
-                        <div className="flex justify-center items-center flex-wrap gap-6 mt-4">
-                            {transactions.map((transaction, index) => (
-                                <TransactionCard key={index} transaction={transaction} />
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+                        <div>
+                            <h2 className="text-xl font-semibold text-green-700 mb-4">Mis Cuentas</h2>
+                            {accounts.map(account => (
+                                <div key={account.account_number} className="p-4 border border-green-300 rounded-lg mt-4 bg-white shadow-lg">
+                                    <h3 className="font-semibold text-xl text-green-700">{account.name}</h3>
+                                    <p className="text-gray-600">{account.alias}</p>
+                                    <p className="text-lg font-bold text-green-600 mt-2">Saldo: {account.balance} {account.currency}</p>
+                                </div>
                             ))}
                         </div>
-                    ) : (
-                        <p className="text-gray-600 text-center">No hay transacciones disponibles.</p>
-                    )}
+                        <div>
+                            <h2 className="text-xl font-semibold text-green-700 mb-4">Transacciones Recientes</h2>
+
+                            {/* Filtro de fechas */}
+                            <div className="mb-4">
+                                <label htmlFor="startDate" className="block text-sm text-green-700">Desde:</label>
+                                <input
+                                    type="date"
+                                    id="startDate"
+                                    value={startDate}
+                                    onChange={(e) => setStartDate(e.target.value)}
+                                    className="p-2 border border-gray-300 rounded-lg w-full"
+                                />
+                            </div>
+
+                            <div className="mb-4">
+                                <label htmlFor="endDate" className="block text-sm text-green-700">Hasta:</label>
+                                <input
+                                    type="date"
+                                    id="endDate"
+                                    value={endDate}
+                                    onChange={(e) => setEndDate(e.target.value)}
+                                    className="p-2 border border-gray-300 rounded-lg w-full"
+                                />
+                            </div>
+
+                            <div>
+                                {filteredTransactions.map((transaction, index) => (
+                                    <div key={index} className="p-4 border border-green-300 rounded-lg mt-4 bg-white shadow-lg">
+                                        <h3 className="font-semibold text-lg text-green-700">{transaction.description}</h3>
+                                        <p className="text-gray-600">
+                                            {transaction.amount?.value || 'N/A'} {transaction.amount?.currency || 'N/A'}
+                                        </p>
+
+                                        <p className="text-sm text-gray-500">{transaction.transaction_date}</p>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
                 </div>
             )}
 
-            {/* Botón flotante circular */}
-            <button
-                onClick={openModal}
-                className="fixed bottom-8 right-8 bg-green-600 text-white p-4 rounded-full shadow-xl hover:bg-green-700 transform transition-all"
-            >
-                <span className="text-2xl">+</span>
-            </button>
-
-            {/* Modal */}
             {isModalOpen && (
                 <div className="fixed inset-0 bg-gray-500 bg-opacity-50 flex justify-center items-center z-50">
-                    <div className="bg-white p-8 rounded-lg shadow-xl w-80">
-                        <h2 className="text-2xl font-semibold text-green-700">Nuevo Modal</h2>
-                        <p className="text-gray-600 mt-4">Contenido del modal...</p>
-                        <button
-                            onClick={closeModal}
-                            className="mt-4 bg-red-600 text-white py-2 px-4 rounded-md hover:bg-red-700"
-                        >
+                    <div className="bg-white p-6 rounded-lg shadow-lg w-96">
+                        <TransferForm
+                            accounts={accounts}
+                            onTransfer={handleTransfer}
+                            fromAccount={fromAccount}
+                        />
+                        <button onClick={closeModal} className="mt-4 p-2 bg-red-500 text-white rounded-lg w-full">
                             Cerrar
                         </button>
                     </div>
                 </div>
             )}
+
+            {/* Botón flotante para abrir el modal */}
+            <button
+                onClick={() => openModal(null)}
+                className="fixed bottom-6 right-6 p-4 bg-green-600 text-white rounded-full shadow-lg hover:bg-green-700 transition-all duration-300"
+            >
+                <span className="text-2xl">+</span>
+            </button>
         </div>
     );
 };

@@ -17,82 +17,124 @@ export const fetchUser = async (userId: string) => {
 // Obtener todas las cuentas (sin filtrar por usuario)
 export const fetchAccounts = async () => {
   try {
-    const response = await fetch(`${API_URL}/users/accounts/`);
+    const response = await fetch(`${API_URL}/accounts`);
     if (!response.ok) {
       throw new Error(`Error: ${response.status}`);
     }
-    return response.json();
+    return response.json(); // Esto debería retornar un array de objetos de cuentas
   } catch (error) {
     console.error("Error en fetchAccounts:", error);
     throw error;
   }
 };
 
+
 // Obtener detalles de una cuenta específica
 export const fetchAccount = async (accountId: string) => {
   try {
-    const response = await fetch(`${API_URL}/accounts/${accountId}`);
-    if (!response.ok) {
-      throw new Error(`Error: ${response.status}`);
-    }
-    return response.json();
+      console.log("Fetching account details for account ID inside fetchAccount:", accountId); // Verifica el ID
+      const response = await fetch(`${API_URL}/accounts/${accountId}`);
+      if (!response.ok) {
+          throw new Error(`Error: ${response.status}`);
+      }
+      return response.json();
   } catch (error) {
-    console.error("Error en fetchAccount:", error);
-    throw error;
+      console.error("Error en fetchAccount:", error);
+      throw error;
+  }
+};
+
+
+export const transferFunds = async (
+  fromAccountId: string,
+  toAccountId: string,
+  amount: number,
+  description: string,
+  currency: string
+) => {
+  try {
+    // Obtener las cuentas involucradas
+    const fromAccountResponse = await fetch(`${API_URL}/accounts/${fromAccountId}`);
+    const fromAccount = await fromAccountResponse.json();
+
+    const toAccountResponse = await fetch(`${API_URL}/accounts/${toAccountId}`);
+    const toAccount = await toAccountResponse.json();
+
+    if (!fromAccount || !toAccount) {
+      throw new Error('Una de las cuentas no es válida');
+    }
+
+    // Validar si hay suficiente saldo en la cuenta de origen
+    if (fromAccount.balance < amount) {
+      throw new Error('Saldo insuficiente');
+    }
+
+    // Crear la transacción
+    const transaction = {
+      origin: fromAccountId,
+      destination: toAccountId,
+      amount: {
+        currency: currency,
+        value: amount,
+      },
+      description: description,
+      transaction_date: new Date().toISOString(),
+    };
+
+    // Registrar la transacción en el backend
+    const transactionResponse = await fetch(`${API_URL}/transactions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(transaction),
+    });
+
+    if (!transactionResponse.ok) {
+      throw new Error('Error al registrar la transacción');
+    }
+
+    const transactionData = await transactionResponse.json();
+
+    // Actualizar los balances de las cuentas
+    fromAccount.balance -= amount;
+    toAccount.balance += amount;
+
+    // Devolver el mensaje y los detalles de la transacción
+    return { message: 'Transferencia realizada con éxito', transactionData };
+  } catch (error) {
+    console.error('Error en la transferencia:', error);
+    throw new Error('Hubo un problema con la transferencia');
   }
 };
 
 // Obtener transacciones de una cuenta específica
-export const fetchAccountTransactions = async (accountId: string) => {
+interface Transaction {
+  items: any[];
+}
+
+export const fetchAccountTransaction = async () => {
   try {
-    const response = await fetch(`${API_URL}/accounts/${accountId}/transactions/`);
-    
-    // Verifica si la respuesta es exitosa
+    // Hacemos la solicitud para obtener una transacción específica de una cuenta
+    const response = await fetch(`${API_URL}/accounts/1/transactions`);
+
+    // Verificar si la respuesta es correcta
     if (!response.ok) {
-      throw new Error(`Error en la solicitud: ${response.status} - ${response.statusText}`);
+      throw new Error(`Error al obtener la transacción con ID`);
     }
 
-    // Verifica si el cuerpo de la respuesta no está vacío
+    const transaction = await response.json();
+
+    return transaction; // Retornamos la transacción obtenida
+  } catch (error) {
+    console.error("Error al obtener la transacción:", error);
+    throw new Error("No se pudo obtener la transacción.");
+  }
+};
+
+
+
+
   
-    const data = await response.json();
-    
-
-    if (!data || !data.items || data.items.length === 0) {
-      throw new Error('No se encontraron transacciones para esta cuenta.');
-    }
-    
-    return data;  // Retorna los datos obtenidos
-  } catch (error) {
-    // Manejo de errores
-    console.error("Error en fetchAccountTransactions:", error);
-    const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
-    throw new Error(`No se pudieron cargar las transacciones: ${errorMessage}`);
-  }
-};
 
 
-// Crear una transacción
-export const createTransaction = async (transactionData: {
-  accountId: string;
-  amount: number;
-  type: string;
-}) => {
-  try {
-    const response = await fetch(`${API_URL}/transactions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(transactionData),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Error: ${response.status}`);
-    }
-
-    return response.json();
-  } catch (error) {
-    console.error("Error en createTransaction:", error);
-    throw error;
-  }
-};
